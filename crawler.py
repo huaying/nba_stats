@@ -20,13 +20,17 @@ class NBAStatCrawler(object):
         self.season_dir = settings.SEASON_DIR
         self.game_dir = settings.GAME_DIR
         self.playerSet = defaultdict(set)
+        self.playerPos = {}
+        self.playerList = []
 
     def start(self):
         data = [
             *self.getSeasonData('2016-17'),
-            *self.getSeasonData('2015-16')
+            #*self.getSeasonData('2015-16')
         ]
+        self.setPlayerPos()
         self.toCSV(data)
+        #print(self.playerPos)
 
 
     # db not available now
@@ -100,11 +104,6 @@ class NBAStatCrawler(object):
             gameDict['GAME_DETAIL'] = self.getGameData(gameDict['GAME_ID'])
             data.append(gameDict)
         return data
-
-        #row1 = seasonData['resultSets'][0]['rowSet'][60]
-        #game1 = dict(zip(header,row1))
-        #game1['GAME'] = self.getGameData(game1['GAME_ID'])
-        #print(json.dumps(game1, indent=2))
     
     def getGameData(self, gameID):
         gamefile = self.game_dir+'/'+gameID
@@ -121,48 +120,62 @@ class NBAStatCrawler(object):
         teamsRawData = gameData['resultSets'][1]
         teamHeader = teamsRawData['headers']
         teams = teamsRawData['rowSet']
-        
-        playerList = []
-        teamList = []
-        gameDetail = {'PLAYER_STATS':playerList, 'TEAM_STATS':teamList}
+        teams[0] = dict(zip(teamHeader, teams[0]))
+        teams[1] = dict(zip(teamHeader, teams[1]))
+
+        playerList = []        
 
         for player in players:
             playerDict = dict(zip(playerHeader,player))
             playerList.append(playerDict)
            
             self.setPlayer(playerDict['TEAM_ABBREVIATION'],playerDict['PLAYER_NAME'])
-            
-        for team in teams:
-            teamDict = dict(zip(teamHeader, team))
-            teamList.append(teamDict)
         
+        host, guest = teams
+        if playerList[0]['TEAM_ABBREVIATION'] == teams[0]['TEAM_ABBREVIATION']:
+            host, guest = guest, host
+        
+        gameDetail = {'PLAYER_STATS':playerList, 'HOST':host, 'GUEST':guest}
         return gameDetail
         
     def setPlayer(self, team, playerName):
-        self.playerSet['team'].add(playerName)
+        self.playerSet[team].add(playerName)
+
+    def setPlayerPos(self): # positions of csv field
+        idx = 0
+        self.playerPos = {}
+        self.playerList = []
+        for team in self.playerSet:
+            for name in self.playerSet[team]:
+                self.playerPos[name] = idx
+                self.playerList.append(name)
+                idx += 1
 
     def toCSV(self, gamedata):
         with open('nba_stats.csv', 'w', newline='') as csvfile:
             cw = csv.writer(csvfile, delimiter=',',
                             quotechar='|',quoting=csv.QUOTE_MINIMAL)
             header_overall = [
-                '球隊','對手','主場','賽季','主場分數','客場分數','勝負'
+                '對手','主場','賽季','主場分數','客場分數','勝負'
             ]
             header_player = [
-                '球員','時間','投籃','命中',
-                '三分','三分命中','三分出手',
-                '罰球','罰球命中','罰球出手',
-                '籃板','前場','後場','助攻',
-                '搶斷','蓋帽','失誤','犯規',
-                '得分','先發','位置',
+                '', '先發', '主場', 
+                '位置', '背靠背', '時間',
+                '投籃', '命中', '出手',
+                '三分', '三分命中', '三分出手',
+                '罰球', '罰球命中', '罰球出手',
+                '籃板', '前場', '後場', '助攻',
+                '搶斷', '蓋帽', '失誤', '犯規',
+                '得分'
             ]
             header = [
                 *header_overall,
-                *[field + str(i) if field != '球員' else loc + field + str(i) 
-                 for loc in ['主場','客場']
-                 for i in range(1,21) 
-                 for field in header_player
-                 ]
+                # *[field + str(i) if field != '球員' else loc + field + str(i) 
+                #  for field in header_player
+                #  ]
+                *[name + ' ' + field 
+                  for name in self.playerList
+                  for field in header_player]
             ]
             cw.writerow(header)
             
@@ -172,22 +185,66 @@ class NBAStatCrawler(object):
                 m = re.match(r'.*\s(.+)', game['MATCHUP'])
                 oppo = m.group(1)
 
-                host = game['GAME_DETAIL']['TEAM_STATS'][1]
-                guest = game['GAME_DETAIL']['TEAM_STATS'][0]
+                host = game['GAME_DETAIL']['HOST']
+                guest = game['GAME_DETAIL']['GUEST']
 
+                if oppo == host['TEAM_ABBREVIATION']: continue
+
+                wl = '1' if game['WL'] == 'W' else '0'
                 row = [
-                    game['TEAM_NAME'],
+                #    game['TEAM_NAME'],
                     oppo,
                     host['TEAM_ABBREVIATION'],
                     game['GAME_DATE'],
                     host['PTS'],
                     guest['PTS'],
-                    game['WL']
+                    wl
                 ]
             
                 # TODO: handle player's data
-            
+                player_field_start = len(row)
+                player_field_len = len(header_player)
+                players = game['GAME_DETAIL']['PLAYER_STATS']
+
+                row.extend(['0'] * player_field_len * len(self.playerList))
+                for player in players:
+                    playerRow = self.toCSVPlayerRow(player, game)
+                    if playerRow:
+                        idx = self.playerPos[player['PLAYER_NAME']]
+                        start_idx = player_field_start + (idx * player_field_len)
+                        row[start_idx : start_idx + player_field_len] = playerRow
                 cw.writerow(row)
+            
+    def toCSVPlayerRow(self, player, game):
+        # '', '先發', '主場', 
+        # '位置', '背靠背', '時間'
+        # '投籃', '命中', '出手',
+        # '三分', '三分命中', '三分出手',
+        # '罰球', '罰球命中', '罰球出手',
+        # '籃板', '前場', '後場', '助攻',
+        # '搶斷', '蓋帽', '失誤', '犯規',
+        # '得分'
+
+        host = game['GAME_DETAIL']['HOST']
+        guest = game['GAME_DETAIL']['GUEST']
+        inGame = player['TEAM_ID'] in [host['TEAM_ID'], guest['TEAM_ID']]
+        isHost = '1' if player['TEAM_ID'] == host['TEAM_ID'] else '0'
+        backToBack = '1' # TODO: no idea yet
+        isStart = '1' if bool(player['START_POSITION']) else '0'
+        position = player['START_POSITION'] if player['START_POSITION'] else '0'
+        
+        if not inGame: return []
+
+        return [
+            player['PLAYER_NAME'], isStart, isHost,
+            position, backToBack, player['MIN'],
+            player['FG_PCT'], player['FGM'], player['FGA'],
+            player['FG3_PCT'], player['FG3M'], player['FG3A'],
+            player['FT_PCT'], player['FTM'], player['FTA'],
+            player['REB'], player['OREB'], player['DREB'], player['AST'],
+            player['STL'], player['BLK'], player['TO'], player['PF'],
+            player['PTS'],
+        ] 
 
 if __name__ == "__main__":
     crawler = NBAStatCrawler()
@@ -207,13 +264,18 @@ if __name__ == "__main__":
 #            'START_POSITION': ...
 #            ...
 #        }...],
-#        # First Team is Guest
-#        'TEAM_STATS': [
+#        'HOST': 
 #        {
 #            'TEAM_ID': ...
 #            'TEAM_NAME': ...
 #            ...
-#        }...]
+#        },
+#        'GUEST': 
+#        {
+#            'TEAM_ID': ...
+#            'TEAM_NAME': ...
+#            ...
+#        },
 #    }
 #}
 #...]
