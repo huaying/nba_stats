@@ -5,7 +5,7 @@ import os.path
 import json
 import re
 import csv
-import pymongo
+#import pymongo
 
 import settings
 
@@ -34,17 +34,17 @@ class NBAStatCrawler(object):
 
 
     # db not available now
-    @property
-    def db(self):
-        if not self.db:
-            client = pymongo.MongoClient(settings.MONGO_URI)
-            self.db = client[settings.MONGO_DB]
-        return self.db
-    
-    # db not available now
-    def insertGameToDatabase(self, data):
-        collection = settings.MONGO_COLLECTION_GAME
-        self.db[collection].insert(data)
+    #@property
+    #def db(self):
+    #    if not self.db:
+    #        client = pymongo.MongoClient(settings.MONGO_URI)
+    #        self.db = client[settings.MONGO_DB]
+    #    return self.db
+    #
+    ## db not available now
+    #def insertGameToDatabase(self, data):
+    #    collection = settings.MONGO_COLLECTION_GAME
+    #    self.db[collection].insert(data)
     
     def download(self, _dir, filename, url):
         try: 
