@@ -225,19 +225,25 @@ class NBAStatCrawler(object):
         # '搶斷', '蓋帽', '失誤', '犯規',
         # '得分'
 
+
         host = game['GAME_DETAIL']['HOST']
         guest = game['GAME_DETAIL']['GUEST']
         inGame = player['TEAM_ID'] in [host['TEAM_ID'], guest['TEAM_ID']]
+        if not inGame: return []
+
         isHost = '1' if player['TEAM_ID'] == host['TEAM_ID'] else '0'
         backToBack = '1' # TODO: no idea yet
         isStart = '1' if bool(player['START_POSITION']) else '0'
         position = player['START_POSITION'] if player['START_POSITION'] else '0'
         
-        if not inGame: return []
-
+        mins = '0'
+        if player['MIN']:
+            colon = player['MIN'].find(':')
+            mins = "%.2f" % (int(player['MIN'][:colon]) + float(player['MIN'][colon+1:])/60)
+        
         return [
             player['PLAYER_NAME'], isStart, isHost,
-            position, backToBack, player['MIN'],
+            position, backToBack, mins,
             player['FG_PCT'], player['FGM'], player['FGA'],
             player['FG3_PCT'], player['FG3M'], player['FG3A'],
             player['FT_PCT'], player['FTM'], player['FTA'],
