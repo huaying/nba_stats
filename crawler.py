@@ -26,7 +26,7 @@ class NBAStatCrawler(object):
     def start(self):
         data = [
             *self.getSeasonData('2016-17'),
-            #*self.getSeasonData('2015-16')
+            # *self.getSeasonData('2015-16')
         ]
         self.setPlayerPos()
         self.toCSV(data)
@@ -242,7 +242,7 @@ class NBAStatCrawler(object):
             mins = "%.2f" % (int(player['MIN'][:colon]) + float(player['MIN'][colon+1:])/60)
         
         return [
-            player['PLAYER_NAME'], isStart, isHost,
+            "1", isStart, isHost,
             position, backToBack, mins,
             player['FG_PCT'], player['FGM'], player['FGA'],
             player['FG3_PCT'], player['FG3M'], player['FG3A'],
